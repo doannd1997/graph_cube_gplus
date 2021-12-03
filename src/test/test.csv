@@ -1,0 +1,10 @@
+id,gender,location,university
+1,man,l1,mit
+2,,l2,
+1,woman,,
+1,,,standford
+2,,l2,
+3,,,
+2,women,,
+3,,,
+1,,l2,
