@@ -3,6 +3,12 @@ import numpy as np
 import json
 import os
 
+data_path = os.environ.get('data_path')
+property = json.load(open(os.path.join(data_path, 'extracted', 'property.json'), 'r'))
+attrs = property['attrs']
+node_path = os.path.join(data_path, 'extracted', 'refined', 'node_attr.csv')
+edge_path = os.path.join(data_path, 'extracted', 'edges_indexed_id.csv')
+
 class single_cuboid:
     def __init__(self, dimensions, dim, dim_alias, nodes, edges) -> None:
         super().__init__()
@@ -61,3 +67,43 @@ class single_cuboid:
 
     def populate_internal_entropy(self):
         pass
+
+def find_net(dim, dimensions):
+    dim_alias = [d  for x, d in enumerate(dimensions) if dim[x] == 1]
+    if 0 not in dim:
+        nodes = pd.read_csv(node_path, sep='\t', dtype={x:int for x in dim_alias})
+        edges = pd.read_csv(
+            edge_path,
+            sep='\t',
+            dtype={
+                'start': int,
+                'end': int,
+                })
+        nodes['weight'] = 1
+        edges['weight'] = 1
+    else:
+        nodes = pd.DataFrame(data=[], columns=dim_alias+['weight'])
+        edges = pd.DataFrame(data=[], columns=['start', 'end', 'weight'])
+    return (nodes, edges, dim_alias)
+
+
+class graph_cube:
+    def __init__(self, dimensions) -> None:
+        self.dimensions = dimensions
+        self.populate_cuboids()
+
+    def populate_cuboids(self):
+        cuboid_dims = [bin(x)[2:].rjust(len(attrs), '0') for x in range(2**len(attrs))]
+        cuboid_dims.reverse()
+        for d in cuboid_dims:
+            d = [int(x) for x in list(d)]
+            nodes, edges, dim_alias = find_net(d, self.dimensions)
+            cuboid = single_cuboid(
+                dimensions=self.dimensions,
+                dim=d,
+                dim_alias=dim_alias,
+                nodes=nodes,
+                edges=edges
+            )
+            break
+

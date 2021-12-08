@@ -1,7 +1,3 @@
-use gplus_refined
-GO;
-
-
 DROP TABLE IF EXISTS [%%des_dim%%_node_aggregated]
 SELECT 
 	%%dim_columns%%,

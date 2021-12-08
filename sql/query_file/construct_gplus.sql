@@ -25,3 +25,14 @@ CREATE TABLE follow (
 	[end_id] VARCHAR(50) REFERENCES [user_profile](indexed_id)
 )
 GO
+
+DROP TABLE IF EXISTS [dbo].[dim_info_dual]
+CREATE TABLE [dbo].[dim_info_dual] (
+		[dim] NVARCHAR(200),
+		[src_dim] NVARCHAR(200),
+		[v_size_s] INT,
+		[v_size_e] INT,
+		[e_size] INT,
+		[external_entropy] FLOAT,
+)
+GO
