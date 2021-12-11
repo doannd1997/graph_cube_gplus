@@ -22,3 +22,9 @@ def create_connection():
     conn = pyodbc.connect(connect_query)
 
     return conn
+
+def db_con_cur():
+    conn = create_connection()
+    cursor = conn.cursor()
+    cursor.execute(f'use {database}')
+    return conn, cursor

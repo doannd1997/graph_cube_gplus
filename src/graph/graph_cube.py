@@ -8,8 +8,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 sys.path.insert(1, '.')
-from src.graph.single_coboid import single_cuboid
-from sql.query.sql import create_connection, database
+from sql.query.sql import create_connection, db_con_cur
 
 load_dotenv('.pyenv')
 
@@ -21,22 +20,15 @@ edge_path = os.path.join(data_path, 'extracted', 'edges_indexed_id.csv')
 
 start_flag = datetime.now()
 
-# conn = create_connection()
-# # conn.autocommit = False
-# cursor = conn.cursor()
-# cursor.execute(f'use {database}')
-
 def aggregate_dim(dim, dimensions):
     dim = [f'[{dimensions[i]}]' for i,x in enumerate(dim) if x == '1']
     dim_columns = ','.join(dim)
-    dim_aggregated = "CONCAT(" + ',\'.\','.join(dim) + ")" if len(dim) > 1 else f"{dim[0]}"
+    dim_aggregated = "CONCAT(" + ',\'.\','.join(dim) + ")" if len(dim) > 1  \
+        else (f"{dim[0]}" if len(dim) > 0 else '')
     return dim_columns, dim_aggregated
 
 
 def get_single_cuboid_sql(des_dim, src_dim, dimensions):
-    # dim = [f'[{dimensions[i]}]' for i,x in enumerate(des_dim) if x == '1']
-    # dim_columns = ','.join(dim)
-    # dim_aggregated = "CONCAT(" + ',\'.\','.join(dim) + ")" if len(dim) > 1 else f"{dim[0]}"
     dim_columns, dim_aggregated = aggregate_dim(des_dim, dimensions)
 
     sql_template = open(os.path.join('sql', 'query_file', 'template.sql'), 'r').read()
@@ -49,15 +41,14 @@ def get_single_cuboid_sql(des_dim, src_dim, dimensions):
     return sql_template
 
 
-def construct():
+def construct_single():
     cuboid_dims = [bin(x)[2:].rjust(len(attrs), '0') for x in range(1, 2**len(attrs))]
     cuboid_dims.reverse()
     construct_pairs = ''
-    for cuboid_dim in cuboid_dims:
-        conn = create_connection()
-        cursor = conn.cursor()
-        cursor.execute(f'use {database}')
 
+    conn, cursor = db_con_cur()
+
+    for cuboid_dim in cuboid_dims:
         cursor.execute('SELECT [dim], [v_size], [e_size] FROM [dbo].[dim_info]')
         dim_info = cursor.fetchall()
 
@@ -77,10 +68,9 @@ def construct():
                 cursor.execute(q)
 
             conn.commit()
-            cursor.close()
-            conn.close()
 
-            with open(os.path.join('sql', 'query_file', f'{cuboid_dim}.sql'), 'w') as f:
+
+            with open(os.path.join('sql', 'query_file', 'single', f'{cuboid_dim}.sql'), 'w') as f:
                 f.write(query)
                 f.close()
 
@@ -91,7 +81,9 @@ def construct():
                 f.close()
 
             print(f'compute cuboid {cuboid_dim} from {best_descendant_dim} success!')
-
+    
+    cursor.close()
+    conn.close()
 
 def find_lowest_cost_descendant(cuboid_dim, cuboids):
     descendants = []
@@ -103,6 +95,7 @@ def find_lowest_cost_descendant(cuboid_dim, cuboids):
     descendants.sort(key=lambda x: x[1])
     return descendants[0]
 
+
 # is dim1 is descendant of d0. eg 11110 is descendant of 10010
 def is_descendant(dim0, dim1):
     for i, d in enumerate(dim0):
@@ -112,7 +105,10 @@ def is_descendant(dim0, dim1):
 
 
 def get_dual_query_sql(s_dim, e_dim, src_dim, dimensions):
-    template_dual = open(os.path.join('sql', 'query_file', 'template_dual.sql'), 'r').read()
+    template_file = 'template_dual_null_2_many.sql' \
+        if s_dim == '00000' \
+        else ('template_dual_many_2_null.sql' if e_dim == '00000' else 'template_dual.sql')
+    template_dual = open(os.path.join('sql', 'query_file', template_file), 'r').read()
     _, s_dim_aggregated = aggregate_dim(s_dim, dimensions)
     _, e_dim_aggregated = aggregate_dim(e_dim, dimensions)
     template_dual = template_dual\
@@ -125,13 +121,7 @@ def get_dual_query_sql(s_dim, e_dim, src_dim, dimensions):
     return template_dual
 
 
-conn = create_connection()
-cursor = conn.cursor()
-cursor.execute(f'use {database}')
-
-def compute_dual(s_dim, e_dim, src_dim):
-
-
+def compute_dual(cursor, s_dim, e_dim, src_dim):
     query = get_dual_query_sql(
         s_dim,
         e_dim,
@@ -145,9 +135,7 @@ def compute_dual(s_dim, e_dim, src_dim):
         # print(q)
         cursor.execute(q)
 
-
-
-    with open(os.path.join('sql', 'query_file', f'dual_{s_dim}_{e_dim}_base_{src_dim}.sql'), 'w') as f:
+    with open(os.path.join('sql', 'query_file', 'dual', f'dual_{s_dim}_{e_dim}_base_{src_dim}.sql'), 'w') as f:
         f.write(query)
         f.close()
 
@@ -163,28 +151,70 @@ def get_time_period():
     return period
 
 
-def construct_dual():
+def get_computed_dual_dims():
+    conn, cursor = db_con_cur()
+    
+    cursor.execute('SELECT [dim] from [dbo].[dim_info_dual]')
+    computed_dual_dims = cursor.fetchall()
+    computed_dual_dims = [d[0] for d in computed_dual_dims]
+    
+    cursor.close()
+    conn.close()
+    return computed_dual_dims
+
+
+computed_dual_dims = get_computed_dual_dims()
+
+
+def is_ignore_dual_compute(s_dim, e_dim):
+    if s_dim == '00000' and e_dim == '00000':
+        return True
+
+    dim = f"{s_dim}_{e_dim}"
+    if dim in computed_dual_dims:
+        return True
+
+
+def construct_dual(batch_size=None):
+    batch_size = 10 if type(batch_size) != str else int(batch_size)
+
+    conn, cursor = db_con_cur()
     s_dims = [bin(x)[2:].rjust(len(attrs), '0') for x in range(2**len(attrs))]
     e_dims = [bin(x)[2:].rjust(len(attrs), '0') for x in range(2**len(attrs))]
+    
+    log_file = open(os.path.join('.','log', 'compute_dual_ignore.txt'), 'w')
 
+    count = 1
     for s_dim in s_dims:
         for e_dim in e_dims:
-            if s_dim == '00000' or e_dim == '00000':
+            if is_ignore_dual_compute(s_dim, e_dim):
+                log_file.write(f"Ignore {s_dim}_{e_dim}\n")
                 continue
             
             src_dim = find_nearest_common_descendant(s_dim, e_dim)
-            compute_dual(s_dim, e_dim, src_dim)
+            compute_dual(cursor, s_dim, e_dim, src_dim)
+            
+            cursor.commit()
 
             period = get_time_period()
-            print(f'In {period.total_seconds()}s: compute dual-cuboid {s_dim}_{e_dim} from {src_dim} success!')
+            print(f'In {period.total_seconds()}s: [{count}/{batch_size}] compute dual-cuboid {s_dim}_{e_dim} from {src_dim} success!')
+
+            if count == batch_size:
+                break
+            count = count + 1
+        
+        if count == batch_size:
+            break
 
     
     conn.commit()
     cursor.close()
     conn.close()
+
+    log_file.close()
     
 if __name__ == '__main__':
     sf = datetime.now()
     # construct()
-    construct_dual()
+    construct_dual(batch_size=sys.argv[1])
     print(f"Finished in: {(datetime.now()-sf).seconds}")

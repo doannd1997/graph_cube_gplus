@@ -3,6 +3,9 @@ import os
 import json
 from dotenv import load_dotenv
 
+
+# sys.setrecursionlimit(10000)
+
 sys.path.insert(1, '.')
 
 load_dotenv('.pyenv')
@@ -122,8 +125,8 @@ def hierarchy_pos(G, root, levels=None, width=1., height=1.):
 # Defining a Class
 class GraphVisualization:
    
-    def __init__(self):
-          
+    def __init__(self, is_directed=None):
+        self.is_directed = is_directed
         # visual is a list which stores all 
         # the set of edges that constitutes a
         # graph
@@ -140,12 +143,18 @@ class GraphVisualization:
     # creates a graph with a given list
     # nx.draw_networkx(G) - plots the graph
     # plt.show() - displays the graph
-    def visualize(self):
-        G = nx.Graph()
+    def visualize(self, root):
+        G = nx.DiGraph() if self.is_directed else nx.Graph()
         G.add_edges_from(self.visual)
 
-        pos = hierarchy_pos(G,'11111')    
-        nx.draw(G, pos=pos, with_labels=True, node_color='#cccccc')
+        # pos = hierarchy_pos(G, root)    
+        nx.draw(
+            G,
+            # pos=pos,
+            with_labels=True,
+            node_color='#cccccc',
+            font_size=6
+            )
         # nx.draw_networkx(G)
         plt.show()
 
@@ -157,7 +166,7 @@ def visualize():
             ascendant = construct_pair.split(' ')[0]
             descendant = construct_pair.split(' ')[1].strip()
             graph.addEdge(ascendant, descendant)
-        graph.visualize()
+        graph.visualize('11111')
 
 if __name__ == '__main__':
     visualize()

@@ -1,2 +1,4 @@
 .venv/
 .pyenv
+*.pyc
+sql/query_file/*
