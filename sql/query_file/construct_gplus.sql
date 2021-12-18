@@ -1,4 +1,4 @@
-use gplus
+use gplus_refined
 GO
 
 IF OBJECT_ID(N'dbo.user_profile', N'U') IS NOT NULL
@@ -36,3 +36,10 @@ CREATE TABLE [dbo].[dim_info_dual] (
 		[external_entropy] FLOAT,
 )
 GO
+
+DROP TABLE IF EXISTS [internal_dim]
+CREATE TABLE [dbo].[internal_dim] (
+	[start] NVARCHAR(200),
+	[dim] NVARCHAR(200),
+	[entropy] FLOAT
+)

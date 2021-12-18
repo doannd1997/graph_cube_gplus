@@ -104,6 +104,13 @@ def is_descendant(dim0, dim1):
     return True
 
 
+def get_dual_template_path(s_dim, e_dim):
+    template_file = 'template_dual_null_2_many.sql' \
+        if s_dim == '00000' \
+        else ('template_dual_many_2_null.sql' if e_dim == '00000' else 'template_dual.sql')
+    template_dual = open(os.path.join('sql', 'query_file', template_file), 'r').read()
+    return template_dual
+
 def get_dual_query_sql(s_dim, e_dim, src_dim, dimensions):
     template_file = 'template_dual_null_2_many.sql' \
         if s_dim == '00000' \
