@@ -16,7 +16,7 @@ sys.path.insert(1, '.')
 from sql.query.sql import db_con_cur
 from src.graph.visualize import GraphVisualization
 from src.graph.graph_cube import find_nearest_common_descendant, aggregate_dim, attrs, is_descendant
-from src.graph.dim_info import get_dim_dual_external_entropy
+from src.graph.dim_info import get_dim_dual_external_entropy, get_dim_info_dual, is_internal_computed
 from src.util.util import get_children_dims, get_dim_level, kbits, extract_dual_dim, get_dual_table_name
 
 data_path = os.environ.get('data_path')
@@ -367,9 +367,17 @@ def suggest_navigate(arg):
         suggested_navigations = [x for x in navigations if x[1] == children_level and is_descendant(dim, x[0])]
         children_level = children_level + 1
 
-    print(suggested_navigations)
-
     return suggested_navigations
+
+
+def get_avaiable_navigate(dim, threshold):
+    children_dims = get_children_dims(dim)
+    suggested_dims = suggest_navigate(f'{dim}:{threshold}')
+    
+    children_dims = [get_dim_info_dual(cd) for cd in children_dims]
+    suggested_dims = [get_dim_info_dual(sd[0]) for sd in suggested_dims]
+
+    return children_dims, suggested_dims
 
 
 def is_dual_cuboid_computed(dim):
@@ -393,19 +401,6 @@ def compute_dual_cuboid(dim):
 
     execute_batch(cursor, query)
     cursor.commit()
-
-
-def is_internal_computed(dim):
-    query = f'''
-        SELECT *
-        FROM [dbo].[internal_dim]
-        WHERE [dim] = '{dim}'
-    '''
-
-    cursor.execute(query)
-    result = cursor.fetchone()
-
-    return result != None
 
 
 def compute_internal(dim):
@@ -532,6 +527,8 @@ def parse_sub_graph(sub_graph):
     })
 
     df = pd.read_sql_query(query, conn)
+    df.drop(columns=['start', 'end'], inplace=True)
+    df['%'] = (df['weight'] / df['weight'].sum() * 100).map('{:,.2f}'.format)
     return df
     
 
@@ -546,16 +543,13 @@ def get_sub_graph(dim, threshold):
     '''
     cursor.execute(query)
     sub_graphs = list(cursor.fetchall())
+    sub_graphs.sort(key=lambda x: x[3])
     sub_graphs = [(parse_sub_graph(sg), sg[3]) for sg in sub_graphs]
 
     return sub_graphs
 
 
-def view_internal(arg):
-    [dim, threshold] = arg.split(':')
-    threshold = float(threshold)
-
-    
+def get_trends(dim, threshold):    
     if not is_internal_computed(dim):
         print('>> compute internal')
         if not is_dual_cuboid_computed(dim):
@@ -567,8 +561,15 @@ def view_internal(arg):
     return sub_graphs
 
 
+def view_internal(arg):
+    [dim, threshold] = arg.split(':')
+    threshold = float(threshold)
+
+    trends = get_trends(dim, threshold)
+    return trends
+
 def test(argv):
-    view_internal('00100_01110:0.73')
+    print(view_internal('00100_01110:0.73'))
 
 
 def main(argv):

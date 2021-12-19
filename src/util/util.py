@@ -1,7 +1,16 @@
 from datetime import date, datetime
 from typing import Counter
 import itertools
+import json
+import os
 from src.graph.graph_cube import find_nearest_common_descendant
+
+from dotenv import load_dotenv
+load_dotenv('.pyenv')
+
+data_path = os.environ.get('data_path')
+property = json.load(open(os.path.join(data_path, 'extracted', 'property.json'), 'r'))
+attrs = property['attrs']
 
 s_flag = datetime.now()
 
@@ -24,9 +33,9 @@ def kbits(n, k):
 
 
 def get_children_dims(dim):
-    for i, d in dim:
+    for i, d in enumerate(dim):
         if d == '0':
-            dim = d[:i] + '1' + d[i+1:]
+            dim = dim[:i] + '1' + dim[i+1:]
             yield dim
         
 
@@ -43,3 +52,17 @@ def extract_dual_dim(dim):
 def get_dual_table_name(dim):
     [s_dim, e_dim, src_dim] = extract_dual_dim(dim)
     return f'dual_{s_dim}_{e_dim}_base_{src_dim}_edge_aggregated'
+
+
+def parse_dim_alias(single_dim):
+    if get_dim_level(single_dim) == 0:
+        return '*'
+    return ','.join([attrs[i] for i, d in enumerate(single_dim) if d == '1'])
+
+
+def get_dim_alias(dim):
+    return '-'.join([parse_dim_alias(d) for d in dim.split('_')]).upper()
+
+
+if __name__ == '__main__':
+    print(get_children_dims('10100_01011'))
