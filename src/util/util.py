@@ -35,8 +35,8 @@ def kbits(n, k):
 def get_children_dims(dim):
     for i, d in enumerate(dim):
         if d == '0':
-            dim = dim[:i] + '1' + dim[i+1:]
-            yield dim
+            _dim = dim[:i] + '1' + dim[i+1:]
+            yield _dim
         
 
 def get_dim_level(dim):
@@ -56,12 +56,12 @@ def get_dual_table_name(dim):
 
 def parse_dim_alias(single_dim):
     if get_dim_level(single_dim) == 0:
-        return '*'
-    return ','.join([attrs[i] for i, d in enumerate(single_dim) if d == '1'])
+        return '(*)'
+    return f'''({','.join([attrs[i] for i, d in enumerate(single_dim) if d == '1'])})'''
 
 
 def get_dim_alias(dim):
-    return '-'.join([parse_dim_alias(d) for d in dim.split('_')]).upper()
+    return ' - '.join([parse_dim_alias(d) for d in dim.split('_')]).upper()
 
 
 if __name__ == '__main__':

@@ -440,21 +440,22 @@ def compute_internal(dim):
 
 def parse_column_block(side_dim, direction_type):
     columns = [
-        '[{direction_prefix}gender].[gender_name] AS [{direction_prefix}gender]',
-	    '[{direction_prefix}job].[job_title] AS [{direction_prefix}job]',
-	    '[{direction_prefix}place].[place_name] AS [{direction_prefix}place]',
-	    '[{direction_prefix}university].[university] AS [{direction_prefix}university]',
-	    '[{direction_prefix}institution].[institution] AS [{direction_prefix}institution]',
+        '[{direction_prefix}gender].[gender_name] AS [({direction_type})_gender]',
+	    '[{direction_prefix}job].[job_title] AS [({direction_type})_job]',
+	    '[{direction_prefix}place].[place_name] AS [({direction_type})_place]',
+	    '[{direction_prefix}university].[university] AS [({direction_type})_university]',
+	    '[{direction_prefix}institution].[institution] AS [({direction_type})_institution]',
     ]
 
     dim_level = get_dim_level(side_dim)
     if dim_level == 0:
-        return f'"All" AS [{direction_type}]'
+        return f''''All' AS [({direction_type})_all]'''
 
     return ',\n'.join(
             [
                 c.format_map(
-                    {'direction_prefix': f'{direction_type}_'}
+                    {'direction_prefix': f'{direction_type}_',
+                    'direction_type': direction_type}
                 ) 
                 for i, c in enumerate(columns) if side_dim[i] == '1'
             ]
@@ -465,23 +466,23 @@ def parse_join_block(side_dim, direction_type):
     columns = [
         '''JOIN [gender] as [{direction_prefix}gender]
             ON [{direction_prefix}gender].[gender_id] = (
-                SELECT CAST('<x>' + REPLACE([{direction}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
+                SELECT CAST('<x>' + REPLACE([{direction_type}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
             )''',
         '''JOIN [job] as [{direction_prefix}job]
             ON [{direction_prefix}job].[job_id] = (
-                SELECT CAST('<x>' + REPLACE([{direction}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
+                SELECT CAST('<x>' + REPLACE([{direction_type}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
             )''',
         '''JOIN [place] AS [{direction_prefix}place]
             ON [{direction_prefix}place].[place_id] = (
-                SELECT CAST('<x>' + REPLACE([{direction}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
+                SELECT CAST('<x>' + REPLACE([{direction_type}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
             )''',
         '''JOIN [university] AS [{direction_prefix}university]
             ON [{direction_prefix}university].[university_id] = (
-                SELECT CAST('<x>' + REPLACE([{direction}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
+                SELECT CAST('<x>' + REPLACE([{direction_type}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
             )''',
         '''JOIN [institution] AS [{direction_prefix}institution]
             ON [{direction_prefix}institution].[institution_id] = (
-                SELECT CAST('<x>' + REPLACE([{direction}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
+                SELECT CAST('<x>' + REPLACE([{direction_type}],'.','</x><x>') + '</x>' AS XML).value('/x[{i}]','int')
             )'''
     ]
 
@@ -496,7 +497,7 @@ def parse_join_block(side_dim, direction_type):
                 columns[i].format_map({
                     'direction_prefix': f'{direction_type}_',
                     'i': len(formated_join)+1,
-                    'direction': direction_type
+                    'direction_type': direction_type
                 })
             )
     
@@ -505,7 +506,7 @@ def parse_join_block(side_dim, direction_type):
 
 def parse_condition_block(value, direction_type):
     if value is None:
-        return f'{direction_type} IS NULL'
+        return f'[{direction_type}] IS NULL'
     
     return f'''[{direction_type}] = '{value}' '''
 
@@ -549,14 +550,18 @@ def get_sub_graph(dim, threshold):
     return sub_graphs
 
 
-def get_trends(dim, threshold):    
-    if not is_internal_computed(dim):
-        print('>> compute internal')
+def compute_trend(dim):
+    if not is_internal_computed(dim)[0]:
         if not is_dual_cuboid_computed(dim):
             print('>> compute dual')
             compute_dual_cuboid(dim)
+        print('>> compute internal')
         compute_internal(dim)
 
+
+def get_trends(dim, threshold):    
+    compute_trend(dim)
+    
     sub_graphs = get_sub_graph(dim, threshold)
     return sub_graphs
 
