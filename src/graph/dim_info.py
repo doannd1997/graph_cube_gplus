@@ -19,14 +19,26 @@ conn, cur = db_con_cur()
 dim_info_dual = None
 available_thresholds = None
 
-def get_dim_dual_external_entropy(dim):
+DIM_TYPE_SINGLE = 'DIM_TYPE_SINGLE'
+DIM_TYPE_DUAL = 'DIM_TYPE_DUAL'
+
+
+def is_dual_dim(dim):
+    return dim.find('_') != -1
+
+
+def pre_compute_dim_info_dual():
     global dim_info_dual
     if not dim_info_dual:
         query_dim_info_dual = '''
         SELECT *
-        FROM [dbo].[dim_info_dual]
+        FROM [dbo].[dim_info_dual_2]
         '''
         dim_info_dual = cur.execute(query_dim_info_dual).fetchall()
+
+
+def get_dim_dual_external_entropy(dim):
+    pre_compute_dim_info_dual()    
 
     for d in dim_info_dual:
         if d[0] == dim:
@@ -50,7 +62,7 @@ def is_internal_computed(dim):
 def get_dim_info_dual(dim):
     query = f'''
         SELECT *
-        FROM [dim_info_dual]
+        FROM [dim_info_dual_2]
         WHERE [dim] = '{dim}'
     '''
 
@@ -62,19 +74,38 @@ def get_dim_info_dual(dim):
             get_dim_alias(dim),
             get_dim_level(dim),
             internal_computed,
-            min_internal_entropy_rate if min_internal_entropy_rate else 1
+            min_internal_entropy_rate if min_internal_entropy_rate else 1,
+            get_dim_dual_external_entropy(dim)
         ]
     columns = [column[0] for column in cur.description] + [
             'dim_alias',
             'level',
             'internal_computed',
-            'min_internal_entropy_rate'
+            'min_internal_entropy_rate',
+            'external_entropy'
         ]
 
     return dict(zip(columns, dim_info))
 
 
+def get_dim_e_size(dim, type='repeat'):
+    if is_dual_dim(dim):
+        pre_compute_dim_info_dual()
+
+        global dim_info_dual
+        for d in dim_info_dual:
+            if d[0] == dim:
+                return d[4]
+    else:
+        # please specify here
+        return 0
+
+
 def get_available_thresholds():
+    return [0.]
+    pass
+
+def _get_available_thresholds():
     global available_thresholds
     if not available_thresholds:
         query = f'''

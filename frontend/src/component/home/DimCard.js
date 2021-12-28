@@ -10,8 +10,6 @@ const DimCard = ({ cuboid }) => {
 	const { external_threshold_rate } = useSelector(state => state.cuboid)
 
 	const onClickCard = () => {
-		console.log(cuboid.dim)
-		console.log(external_threshold_rate)
 		dispatch(getCuboid(cuboid.dim, external_threshold_rate))
 	}
 	return (
@@ -41,6 +39,11 @@ const DimCard = ({ cuboid }) => {
 				</div>
 				<div class='d-flex'>
 					<text style={{ color: '#555555' }}>Số cạnh: {cuboid.e_size}</text>
+				</div>
+				<div class='d-flex'>
+					<text style={{ color: '#555555' }}>
+						external Entropy: {cuboid.external_entropy}
+					</text>
 				</div>
 			</Card.Body>
 			<Card.Footer>

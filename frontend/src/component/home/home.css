@@ -52,3 +52,7 @@
 .custom-control-input:checked~.custom-control-label::before {
     background-color: red;
 }
+
+.hidden {
+    display: none;
+}

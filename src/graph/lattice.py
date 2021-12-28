@@ -5,7 +5,7 @@ import math
 import json
 import getopt
 import pandas as pd
-
+import matplotlib.pyplot as plt
 
 from dotenv import load_dotenv
 from networkx.generators import directed
@@ -16,7 +16,7 @@ sys.path.insert(1, '.')
 from sql.query.sql import db_con_cur
 from src.graph.visualize import GraphVisualization
 from src.graph.graph_cube import find_nearest_common_descendant, aggregate_dim, attrs, is_descendant
-from src.graph.dim_info import get_dim_dual_external_entropy, get_dim_info_dual, is_internal_computed
+from src.graph.dim_info import get_dim_dual_external_entropy, get_dim_info_dual, is_internal_computed, get_dim_e_size
 from src.util.util import get_children_dims, get_dim_level, kbits, extract_dual_dim, get_dual_table_name
 
 data_path = os.environ.get('data_path')
@@ -238,6 +238,10 @@ def find_cuboid_k(ci, cg):
 def compute_external_h_rate_ikg(ci, ck, cg):
     expaned_dim, _ = get_expanded_dim(ci, ck)
     d_max = dim_unique_value[expaned_dim]
+
+    v_size_i = get_dim_e_size(ci)
+    v_size_g = get_dim_e_size(cg)
+
     return ((get_dim_dual_external_entropy(cg) - get_dim_dual_external_entropy(ci))/math.log(d_max, 2))
 
 
@@ -286,7 +290,7 @@ def prune_lattice(nav_gcl, threshold, s, m):
                     min_rate = min(min_rate, external_h_rate)
                     k_min = ck
                 if min_rate <= threshold:
-                    print(f"{s} - {m} {len(nav_gcl)} {min_rate}: {ci}, {k_min}, {cg}", flush=True, end='\n')
+                    print(f"{s} - {m} {len(nav_gcl)} {min_rate}/{threshold}: {ci}, {k_min}, {cg}", flush=True, end='\n')
                     edges = find_edges_ikg(ci, cg, delta_level=m-s)
 
                     nav_gcl[:] = nav_gcl + edges
@@ -344,9 +348,9 @@ def compute_navigation(threshold=0.1):
 
 def get_navigations(threshold):
     query = f'''
-        SELECT DISTINCT [end] 
-        FROM [dbo].[navigation_threshold]
-        WHERE [threshold] = {threshold}
+        SELECT DISTINCT [descendant_dim] 
+        FROM [dbo].[navigation_2]
+        WHERE [external_rate] <= {threshold}
     '''
 
     cursor.execute(query)
@@ -534,7 +538,14 @@ def parse_sub_graph(sub_graph):
     
 
 def get_sub_graph(dim, threshold):
-    query = f'''
+    '''
+        if threshold is [float] => get all sub graph with lower than threshold
+        elif threshold is [-top:n] => get top 'n' threshold
+    '''
+
+    parsed = threshold.split(':')
+    if len(parsed) == 1:
+        query = f'''
         SELECT *
         FROM [dbo].[internal_dim]
         WHERE 
@@ -542,6 +553,20 @@ def get_sub_graph(dim, threshold):
                 AND
             [entropy_rate] <= {threshold}
     '''
+    elif len(parsed) == 2:
+        [prefix, top]  = parsed
+        query = f'''
+            SELECT TOP({top}) *
+            FROM [dbo].[internal_dim]
+            WHERE 
+                [dim] = '{dim}'
+            ORDER BY
+                [entropy_rate]
+        '''
+    
+    else:
+        return []
+        
     cursor.execute(query)
     sub_graphs = list(cursor.fetchall())
     sub_graphs.sort(key=lambda x: x[3])
@@ -573,13 +598,38 @@ def view_internal(arg):
     trends = get_trends(dim, threshold)
     return trends
 
+
+def plot_external(arg):
+    query = '''
+        SELECT SUM(CAST([e_size] AS BIGINT))
+        FROM [dim_info_dual_2]
+    '''
+    cursor.execute(query)
+    sum_weight = str(cursor.fetchone()[0])
+
+    query_file = open(os.path.join('sql', 'query_file', 'plot_external.sql'), 'r').read().replace(r'%%SUM_WEIGHT%%', sum_weight)
+    cursor.execute(query_file)
+
+    result = cursor.fetchall()
+
+    print(result)
+
+    thresholds = ["{:.0e}".format(r[0]) for r in result]
+    percents = [r[1]*100 for r in result]
+
+    plt.plot(thresholds, percents)
+    plt.ylabel(r'% of record')
+    plt.show()
+
+
+
 def test(argv):
     print(view_internal('00100_01110:0.73'))
 
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, 'cv:i:t', ['compute_navigation=', 'suggest_navigate='])
+        opts, args = getopt.getopt(argv, 'cv:i:t', ['compute_navigation=', 'suggest_navigate=', 'plot_external'])
     except:
         sys.exit(2)
     
@@ -598,6 +648,8 @@ def main(argv):
             suggest_navigate(arg)
         elif opt == '--view_internal':
             view_internal(arg)
+        elif opt == '--plot_external':
+            plot_external(arg)
 
     cursor.commit()
     cursor.close()

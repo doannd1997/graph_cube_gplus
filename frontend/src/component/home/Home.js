@@ -24,21 +24,13 @@ const Home = () => {
 		suggested_dims,
 		loading,
 		error,
-		available_thresholds,
-		external_threshold_rate,
 		computing_internal,
+		history_dims,
 	} = useSelector(state => state.cuboid)
-
-	useEffect(() => {
-		if (error) {
-			alert.error(error)
-			dispatch(clearErrors())
-		}
-		dispatch(getCuboid())
-	}, [])
 
 	const dims = ['Gender', 'Job', 'Place', 'University', 'Institution']
 	const [state, setState] = useState({
+		externalEntropyRate: 0.1,
 		internalEntropyRate: '',
 		quick_navigate_start: [...Array(dims.length).keys()].map(i => false),
 		quick_navigate_end: [...Array(dims.length).keys()].map(i => false),
@@ -48,7 +40,7 @@ const Home = () => {
 		dispatch(getCuboid(info.dim, event.target.value))
 	}
 
-	const onChangeInternalRate = event => {
+	const onChangeRate = event => {
 		setState({
 			...state,
 			[event.target.name]: event.target.value,
@@ -70,12 +62,22 @@ const Home = () => {
 			state.quick_navigate_start.map(n => (n ? 1 : 0)).join(''),
 			state.quick_navigate_end.map(n => (n ? 1 : 0)).join(''),
 		].join('_')
-		dispatch(getCuboid(dim, external_threshold_rate))
+		dispatch(getCuboid(dim, state.externalEntropyRate))
 	}
+
+	const onClickBack = event => {
+		if (history_dims.length > 1)
+			dispatch(getCuboid(history_dims.at(-1), state.externalEntropyRate, true))
+	}
+
+	const processExternal = () => {
+		dispatch(getCuboid(info.dim, state.externalEntropyRate))
+	}
+
 	const processInternal = () => {
 		if (!info.internal_computed) {
 			const successCallback = () => {
-				dispatch(getCuboid(info.dim, external_threshold_rate))
+				dispatch(getCuboid(info.dim, state.externalEntropyRate))
 			}
 			dispatch(computeInternal(info.dim, successCallback))
 		} else {
@@ -83,6 +85,14 @@ const Home = () => {
 			window.open(url)
 		}
 	}
+
+	useEffect(() => {
+		if (error) {
+			alert.error(error)
+			dispatch(clearErrors())
+		}
+		dispatch(getCuboid())
+	}, [])
 
 	return (
 		<div class='d-flex' id='container'>
@@ -118,32 +128,41 @@ const Home = () => {
 				style={{ width: '40rem' }}
 			>
 				<div class='p-1 m-1 flex-grow-1 d-flex flex-column border quick-navigation-container'>
-					<div class='d-flex'>
-						<div class='flex-grow-1 row justify-content-center align-self-center text-center'>
-							{/* <strong class='bg-primary'> */}
-							<strong>Ngưỡng External Entropy Rate</strong>
-							{/* </strong> */}
-						</div>
-						<div>
-							<select
-								class='form-select'
-								aria-label='Default select example'
-								onChange={onSelectExternalThresholdRate}
-							>
-								{available_thresholds.map(threshold => (
-									<option
-										value={threshold}
-										selected={threshold == external_threshold_rate}
-									>
-										{threshold}
-									</option>
-								))}
-							</select>
-						</div>
+					<div class='d-flex align-items- p-1 justify-content-between'>
+						<Form.Control
+							type='text'
+							placeholder={`External Entropy Rate`}
+							name='externalEntropyRate'
+							required
+							aria-describedby='help'
+							value={state.externalEntropyRate}
+							onChange={onChangeRate}
+							style={{ marginRight: '2px' }}
+						/>
+						<Button
+							onClick={processExternal}
+							style={{ backgroundColor: 'SaddleBrown', outline: 'none' }}
+						>
+							Process
+						</Button>
 					</div>
 					<div class='mt-2 d-flex flex-column-reverse flex-grow-1'>
 						<div
 							className='d-flex justify-content-center border-radius'
+							style={{
+								height: '2.2rem',
+								cursor: 'pointer',
+								backgroundColor: 'SaddleBrown',
+								borderRadius: '0.3rem',
+							}}
+							onClick={onClickBack}
+						>
+							<strong class='mt-1 text-center align-middle text-white'>
+								Back
+							</strong>
+						</div>
+						<div
+							className='d-flex justify-content-center border-radius mb-1'
 							style={{
 								height: '2.2rem',
 								cursor: 'pointer',
@@ -156,7 +175,7 @@ const Home = () => {
 								Quick Navigate
 							</strong>
 						</div>
-						<div class='mb-2'>
+						<div class='mb-2 border-top'>
 							<div className='d-flex'>
 								<div className='flex-grow-1 text-center font-weight-bold border-right'>
 									<strong>Start</strong>
@@ -222,6 +241,12 @@ const Home = () => {
 						</div>
 						<div class='d-flex'>
 							<div class='attr-title text-left'>
+								<text style={{ color: '#333' }}>External Entropy:</text>
+							</div>
+							<div class='flex-grow-1'>{info.external_entropy}</div>
+						</div>
+						<div class='d-flex'>
+							<div class='attr-title text-left'>
 								<text style={{ color: '#333' }}>Internal Entropy:</text>
 							</div>
 							<div class='flex-grow-1'>
@@ -235,14 +260,14 @@ const Home = () => {
 							type='text'
 							placeholder={`Internal Entropy Rate ${
 								info.internal_computed
-									? (Number(info.min_internal_entropy_rate) + 0.01).toFixed(2)
+									? Number(info.min_internal_entropy_rate).toFixed(2)
 									: ''
 							}`}
 							name='internalEntropyRate'
 							required
 							aria-describedby='help'
 							value={state.internalEntropyRate}
-							onChange={onChangeInternalRate}
+							onChange={onChangeRate}
 							style={{ marginRight: '2px' }}
 						/>
 						{computing_internal ? (

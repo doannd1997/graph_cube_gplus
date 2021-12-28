@@ -139,13 +139,13 @@ def compute_dual(cursor, s_dim, e_dim, src_dim):
     batched_queries = query.split('GO')
     for q in batched_queries:
         q = q.strip()
-        # print(q)
         cursor.execute(q)
 
-    with open(os.path.join('sql', 'query_file', 'dual', f'dual_{s_dim}_{e_dim}_base_{src_dim}.sql'), 'w') as f:
+    with open(os.path.join('sql', 'query_file', 'dual_2', f'dual_{s_dim}_{e_dim}_base_{src_dim}.sql'), 'w') as f:
         f.write(query)
         f.close()
-
+    
+    cursor.commit()
 
 def find_nearest_common_descendant(s_dim, e_dim):
     return bin(int(s_dim, 2)|int(e_dim, 2))[2:].rjust(len(attrs), '0')
@@ -161,17 +161,15 @@ def get_time_period():
 def get_computed_dual_dims():
     conn, cursor = db_con_cur()
     
-    cursor.execute('SELECT [dim] from [dbo].[dim_info_dual]')
+    cursor.execute('SELECT [dim] from [dbo].[dim_info_dual_2]')
     computed_dual_dims = cursor.fetchall()
     computed_dual_dims = [d[0] for d in computed_dual_dims]
     
-    cursor.close()
-    conn.close()
     return computed_dual_dims
 
 
 computed_dual_dims = get_computed_dual_dims()
-
+print(len(computed_dual_dims))
 
 def is_ignore_dual_compute(s_dim, e_dim):
     if s_dim == '00000' and e_dim == '00000':
@@ -201,8 +199,6 @@ def construct_dual(batch_size=None):
             src_dim = find_nearest_common_descendant(s_dim, e_dim)
             compute_dual(cursor, s_dim, e_dim, src_dim)
             
-            cursor.commit()
-
             period = get_time_period()
             print(f'In {period.total_seconds()}s: [{count}/{batch_size}] compute dual-cuboid {s_dim}_{e_dim} from {src_dim} success!')
 

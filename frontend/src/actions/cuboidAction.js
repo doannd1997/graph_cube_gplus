@@ -11,7 +11,7 @@ import {
 } from '../consts/cuboidConsts'
 
 export const getCuboid =
-	(dim = '00000_00000', threshold = 0.1) =>
+	(dim = '00000_00000', threshold = 0.1, isBack = false) =>
 	async dispatch => {
 		try {
 			dispatch({
@@ -24,7 +24,7 @@ export const getCuboid =
 
 			dispatch({
 				type: CUBOID_SUCCESS,
-				payload: data,
+				payload: { ...data, isBack: isBack },
 			})
 		} catch (error) {
 			console.log(CUBOID_FAIL, error)

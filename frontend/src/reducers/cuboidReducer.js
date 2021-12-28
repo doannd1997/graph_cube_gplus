@@ -19,11 +19,10 @@ const cuboidDefaultState = {
 	},
 	children_dims: [],
 	suggested_dims: [],
-	available_thresholds: [0.1],
-	external_threshold_rate: 0.1,
 	loading: true,
 	computing_internal: false,
 	error: null,
+	history_dims: [],
 }
 
 export const cuboidReducer = (state = cuboidDefaultState, action) => {
@@ -32,12 +31,16 @@ export const cuboidReducer = (state = cuboidDefaultState, action) => {
 			return { ...state, loading: true }
 		case CUBOID_SUCCESS:
 			return {
+				last_dim: state.info.dim,
 				info: action.payload.info,
 				children_dims: action.payload.children_dims,
 				suggested_dims: action.payload.suggested_dims,
 				available_thresholds: action.payload.available_thresholds,
 				external_threshold_rate: action.payload.external_threshold_rate,
 				loading: false,
+				history_dims: action.payload.isBack
+					? state.history_dims.slice(0, -1)
+					: state.history_dims.concat([state.info.dim]),
 			}
 		case CUBOID_COMPUTE_INTERNAL_REQUEST:
 			return {
