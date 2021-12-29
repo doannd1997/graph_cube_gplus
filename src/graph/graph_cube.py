@@ -169,7 +169,6 @@ def get_computed_dual_dims():
 
 
 computed_dual_dims = get_computed_dual_dims()
-print(len(computed_dual_dims))
 
 def is_ignore_dual_compute(s_dim, e_dim):
     if s_dim == '00000' and e_dim == '00000':

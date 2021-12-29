@@ -6,6 +6,7 @@ import json
 import getopt
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 from dotenv import load_dotenv
 from networkx.generators import directed
@@ -599,28 +600,69 @@ def view_internal(arg):
     return trends
 
 
-def plot_external(arg):
-    query = '''
-        SELECT SUM(CAST([e_size] AS BIGINT))
-        FROM [dim_info_dual_2]
-    '''
+def compute_external_threshold_plot(threshold):
+    query = open(os.path.join('sql', 'query_file', 'plot_external_prepare.sql'), 'r').read()
+    query = query.replace(r'%%threshold%%', str(threshold))
     cursor.execute(query)
-    sum_weight = str(cursor.fetchone()[0])
+    cursor.commit()
 
-    query_file = open(os.path.join('sql', 'query_file', 'plot_external.sql'), 'r').read().replace(r'%%SUM_WEIGHT%%', sum_weight)
-    cursor.execute(query_file)
 
-    result = cursor.fetchall()
+def get_external_threshold_cuboid_rate(threshold):
+    query = open(os.path.join('sql', 'query_file', 'plot_external_cuboid_count.sql'), 'r').read()
+    query = query.replace(r'%%threshold%%', str(threshold))
+    cursor.execute(query)
+    return float(cursor.fetchone()[0])
 
-    print(result)
 
-    thresholds = ["{:.0e}".format(r[0]) for r in result]
-    percents = [r[1]*100 for r in result]
+def get_external_threshold_edge_rate(threshold):
+    query = open(os.path.join('sql', 'query_file', 'plot_external_edge_count.sql'), 'r').read()
+    query = query.replace(r'%%threshold%%', str(threshold))
+    cursor.execute(query)
+    return float(cursor.fetchone()[0] or 0)
 
-    plt.plot(thresholds, percents)
-    plt.ylabel(r'% of record')
+
+def get_rates(thresholds):
+    cuboid_rates = []
+    edge_rates = []
+    for t in thresholds:
+        compute_external_threshold_plot(t)
+        cuboid_rate = get_external_threshold_cuboid_rate(t)
+        edge_rate = get_external_threshold_edge_rate(t)
+
+        cuboid_rates.append(cuboid_rate)
+        edge_rates.append(edge_rate)
+
+    return cuboid_rates, edge_rates
+
+
+def plot_external(arg):
+    thresholds = [
+        np.arange(1e-1, 1.1, 1e-1),
+        np.arange(1e-2, 1.1e-1, 1e-2),
+        np.arange(1e-3, 1.1e-2, 1e-3),
+        np.arange(1e-4, 1.1e-3, 1e-4),
+        np.arange(1e-5, 1.1e-4, 1e-5),
+        np.arange(1e-6, 1.1e-5, 1e-6),
+        ]
+
+    fig, axs = plt.subplots(len(thresholds), 1)
+    for i, ts in enumerate(thresholds):
+        cuboid_rates, edge_rates = get_rates(ts)
+        cuboid_rates = np.array(cuboid_rates)
+        cuboid_rates = cuboid_rates*100
+        edge_rates = np.array(edge_rates)
+        edge_rates = edge_rates*100
+        axs[i].plot(ts, cuboid_rates, label='Cuboid remain')
+        axs[i].plot(ts, edge_rates, label='Edge ramain')
+        axs[i].set_xlim(ts[0], ts[-1])
+        axs[i].set_ylim(0, 120)
+        axs[i].set_xlabel('External thredhold')
+        axs[i].set_ylabel(r'% after pruning')
+        axs[i].grid(True)
+        axs[i].legend()
+
+    fig.tight_layout()
     plt.show()
-
 
 
 def test(argv):
