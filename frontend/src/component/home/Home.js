@@ -258,11 +258,7 @@ const Home = () => {
 					<div class='d-flex align-items- p-1 justify-content-between'>
 						<Form.Control
 							type='text'
-							placeholder={`Internal Entropy Rate ${
-								info.internal_computed
-									? Number(info.min_internal_entropy_rate).toFixed(2)
-									: ''
-							}`}
+							placeholder={`Internal Entropy Rate`}
 							name='internalEntropyRate'
 							required
 							aria-describedby='help'

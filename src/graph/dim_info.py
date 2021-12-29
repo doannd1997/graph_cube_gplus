@@ -48,7 +48,7 @@ def get_dim_dual_external_entropy(dim):
 
 def is_internal_computed(dim):
     query = f'''
-        SELECT MIN([entropy_rate])
+        SELECT COUNT(*)
         FROM [dbo].[internal_dim]
         WHERE [dim] = '{dim}'
     '''
@@ -56,7 +56,7 @@ def is_internal_computed(dim):
     cur.execute(query)
     result = cur.fetchone()[0]
 
-    return result != None, result
+    return result != 0
 
 
 def get_dim_info_dual(dim):
@@ -66,7 +66,7 @@ def get_dim_info_dual(dim):
         WHERE [dim] = '{dim}'
     '''
 
-    internal_computed, min_internal_entropy_rate = is_internal_computed(dim)
+    internal_computed = is_internal_computed(dim)
 
     cur.execute(query)
     dim_info = cur.fetchone()
@@ -74,14 +74,12 @@ def get_dim_info_dual(dim):
             get_dim_alias(dim),
             get_dim_level(dim),
             internal_computed,
-            min_internal_entropy_rate if min_internal_entropy_rate else 1,
             get_dim_dual_external_entropy(dim)
         ]
     columns = [column[0] for column in cur.description] + [
             'dim_alias',
             'level',
             'internal_computed',
-            'min_internal_entropy_rate',
             'external_entropy'
         ]
 

@@ -4,9 +4,11 @@ import sys
 import math
 import json
 import getopt
+from networkx.generators.classic import turan_graph
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+import re
 
 from dotenv import load_dotenv
 from networkx.generators import directed
@@ -389,8 +391,7 @@ def is_dual_cuboid_computed(dim):
     query = '''
         SELECT OBJECT_ID('{}')
     '''
-    [s_dim, e_dim, src_dim] = extract_dual_dim(dim)
-    table_name = f'dual_{s_dim}_{e_dim}_base_{src_dim}_edge_aggregated'
+    table_name = get_dual_table_name(dim)
 
     query = query.format(table_name)
     
@@ -403,7 +404,6 @@ def compute_dual_cuboid(dim):
     [s_dim, e_dim, src_dim] = extract_dual_dim(dim)
     query = get_dual_query_sql(s_dim, e_dim, src_dim, attrs)
     
-
     execute_batch(cursor, query)
     cursor.commit()
 
@@ -419,7 +419,7 @@ def compute_internal(dim):
             SELECT [{type}] AS [id],
                 '{dim}' AS [dim],
                 '{type}' AS [type],
-                [dbo].a_entropy([weight]) AS [entropy_rate]
+                CAST([dbo].a_entropy([weight]) AS DECIMAL(30,20)) AS [entropy_rate]
             FROM [{table_name}]
             GROUP BY [{type}]
     '''
@@ -575,13 +575,12 @@ def get_sub_graph(dim, threshold):
 
     return sub_graphs
 
-
 def compute_trend(dim):
-    if not is_internal_computed(dim)[0]:
+    if not is_internal_computed(dim):
         if not is_dual_cuboid_computed(dim):
-            print('>> compute dual')
+            print(f'>> compute dual {dim}')
             compute_dual_cuboid(dim)
-        print('>> compute internal')
+        print(f'>> compute internal {dim}')
         compute_internal(dim)
 
 
@@ -637,10 +636,10 @@ def get_rates(thresholds):
 
 def plot_external(arg):
     thresholds = [
-        np.arange(1e-1, 1.1, 1e-1),
-        np.arange(1e-2, 1.1e-1, 1e-2),
-        np.arange(1e-3, 1.1e-2, 1e-3),
-        np.arange(1e-4, 1.1e-3, 1e-4),
+        # np.arange(1e-1, 1.1, 1e-1),
+        # np.arange(1e-2, 1.1e-1, 1e-2),
+        # np.arange(1e-3, 1.1e-2, 1e-3),
+        # np.arange(1e-4, 1.1e-3, 1e-4),
         np.arange(1e-5, 1.1e-4, 1e-5),
         np.arange(1e-6, 1.1e-5, 1e-6),
         ]
@@ -656,7 +655,7 @@ def plot_external(arg):
         axs[i].plot(ts, edge_rates, label='Edge ramain')
         axs[i].set_xlim(ts[0], ts[-1])
         axs[i].set_ylim(0, 120)
-        axs[i].set_xlabel('External thredhold')
+        axs[i].set_xlabel('External threshold')
         axs[i].set_ylabel(r'% after pruning')
         axs[i].grid(True)
         axs[i].legend()
@@ -665,13 +664,163 @@ def plot_external(arg):
     plt.show()
 
 
+
+def get_considered_dims(upper_level, lower_level, threshold):
+    query = f'''
+        DECLARE @upper_level AS INT = {upper_level}
+        DECLARE @lower_level AS INT = {lower_level}
+
+        SELECT DISTINCT ([descendant_dim])
+        FROM [navigation_2]
+        WHERE
+            [external_rate] <= {threshold}
+                AND
+            [external_rate] > 0
+                AND
+            LEN(REPLACE([ascendant_dim], '0', '')) - 1 >= @upper_level
+                AND
+            LEN(REPLACE([descendant_dim], '0', '')) - 1 <= @lower_level
+    '''
+    
+    cursor.execute(query)
+    considered_dims = [c[0] for c in cursor.fetchall()]
+
+    return considered_dims
+
+
+def get_top_subgraphs(dims, subgraph_count):
+    '''
+        get top subgraph in all dims
+    '''
+
+    if len(dims) == 0:
+        return []
+
+    dims_str = ','.join( "'" + d + "'" for d in dims)
+    query = f'''
+        SELECT TOP({subgraph_count}) WITH TIES *
+        FROM [internal_dim]
+        WHERE
+            [dim] IN ({dims_str})
+        ORDER BY [entropy_rate]
+    '''
+
+    cursor.execute(query)
+    top_subgraphs = cursor.fetchall()
+
+    return top_subgraphs
+
+
+def plot_internal(arg):
+    '''
+        [arg]: 'upper_level:lowwer_level:subgraph_count'
+        plot internal between level s and level m to reduce number of cuboids considered
+        each navigation has start dim level >= s and end dim level <=m
+        use subgraph_count to evaluate pruning
+        arg should be 7:9:100
+    '''
+
+    upper_level, lower_level, subgraph_count = arg.split(':')
+    considered_dims = get_considered_dims(upper_level, lower_level, 1)
+
+    for c in considered_dims:
+        compute_trend(c)
+
+    consider_subgraphs = get_top_subgraphs(considered_dims, subgraph_count)
+
+    def mapping_subgraph(subgraph):
+        return '.'.join(list(subgraph)[:-1])
+
+    def evaluate(true_subgraphs, subgraphs):
+        true_subgraphs = set([mapping_subgraph(s) for s in true_subgraphs])
+        subgraphs = set([mapping_subgraph(s) for s in subgraphs])
+        total = len(true_subgraphs)
+        return len(true_subgraphs.intersection(subgraphs))/total
+
+    thresholds = [i*10**-6 for i in range(0, 5, 1)] + [1e-5, 1e-4, 1e-3, 1e-2, 1]
+    subgraph_keep_rates = []
+    cuboid_remain_rates = []
+    for t in thresholds:
+        dims = get_considered_dims(upper_level, lower_level, t)
+        subgraphs = get_top_subgraphs(dims, subgraph_count)
+
+        subgraph_keep_rates.append(round(evaluate(consider_subgraphs, subgraphs)*100))
+        cuboid_remain_rates.append(round(len(dims)/len(considered_dims)*100))
+
+    fig, axs = plt.subplots()
+
+    thresholds = [str(t) for t in thresholds]
+    axs.plot(thresholds, subgraph_keep_rates, label='Trend in remain cuboid')
+    axs.plot(thresholds, cuboid_remain_rates, label='Cuboid after pruning')
+    # axs.set_xlim(ts[0], ts[-1])
+    axs.set_ylim(0, 120)
+    axs.set_xlabel('External threshold')
+    axs.set_ylabel(r'%')
+    axs.grid(True)
+    axs.legend()
+
+    fig.tight_layout()
+    plt.show()
+
+
+def plot_time(arg):
+    '''
+        Plot time compute cuboid by level
+    '''
+
+    times = dict()
+    total_times = 0
+
+    logs = open(os.path.join('log', 'compute_dual.txt'), 'r').readlines()
+
+    pattern_time = re.compile(r'(?P<time>[-+]?\d*\.\d+|\d+)')
+    pattern_dim = re.compile(r'(?P<dim>\d+_\d+)')
+    for log in logs:
+        time = re.search(pattern_time, log)
+        dim = re.search(pattern_dim, log)
+        if time and dim:
+            level = get_dim_level(dim.group())
+            time = float(time.group())
+
+            if level not in times:
+                times[level] = []
+            times[level].append(time)
+
+            total_times = total_times + time
+
+    for t in times:
+        avg_time = sum(times[t])/len(times[t])
+        times[t] = avg_time
+
+    fig, axs = plt.subplots()
+    axs.plot(times.keys(), times.values(), label='Time to compute cuboid')
+    axs.set_xlabel('Number of Dimensions')
+    axs.set_ylabel('Average time')
+    # axs.grid(True)
+    axs.legend()
+
+    fig.tight_layout()
+    plt.show()
+    
+    print(times)
+    print(total_times)
+
+
 def test(argv):
-    print(view_internal('00100_01110:0.73'))
+    print(is_internal_computed('11101_01111'))
 
 
 def main(argv):
     try:
-        opts, args = getopt.getopt(argv, 'cv:i:t', ['compute_navigation=', 'suggest_navigate=', 'plot_external'])
+        opts, args = getopt.getopt(
+            argv,
+            'cv:i:t',
+            ['compute_navigation=',
+                'suggest_navigate=',
+                'plot_external',
+                'plot_internal=',
+                'plot_time'
+            ])
     except:
         sys.exit(2)
     
@@ -692,6 +841,10 @@ def main(argv):
             view_internal(arg)
         elif opt == '--plot_external':
             plot_external(arg)
+        elif opt == '--plot_internal':
+            plot_internal(arg)
+        elif opt == '--plot_time':
+            plot_time(arg)
 
     cursor.commit()
     cursor.close()
